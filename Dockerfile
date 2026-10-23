@@ -1,9 +1,17 @@
-FROM node:hydrogen-buster
-COPY graphserver.js .
-COPY package.json .
-COPY UScities.json .
-RUN npm install &&\
-    apk update &&\
-    apk upgrade
-EXPOSE  4000
-CMD node graphserver.js
+FROM node:24-alpine AS dependencies
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+FROM node:24-alpine AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+# The running service needs node, not the vulnerable package-manager toolchain.
+RUN rm -rf /usr/local/lib/node_modules /opt/yarn* \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /usr/local/bin/yarn /usr/local/bin/yarnpkg
+COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node graphserver.js UScities.json ./
+USER node
+EXPOSE 4000
+CMD ["node", "graphserver.js"]
